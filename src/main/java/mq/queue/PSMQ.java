@@ -33,7 +33,7 @@ public class PSMQ implements MQ {
         if (!subscribePointers.containsKey(subscriberName)) return ret;
         int pointer = subscribePointers.get(subscriberName), dequeueCount = 0;
         while (dequeueCount < maxCount && pointer + dequeueCount < queue.size()) {
-            ret.add(queue.get(pointer));
+            ret.add(queue.get(pointer + dequeueCount));
             dequeueCount++;
         }
         subscribePointers.put(subscriberName, pointer + dequeueCount);
