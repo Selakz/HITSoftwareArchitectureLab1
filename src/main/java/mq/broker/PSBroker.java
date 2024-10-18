@@ -5,10 +5,7 @@ import mq.message.BasicMessage;
 import mq.message.Message;
 import mq.queue.PSMQ;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -21,7 +18,7 @@ import java.util.concurrent.Executors;
 public class PSBroker implements Broker {
     private final Set<PSMQ> queues = new HashSet<>();
 
-    private ExecutorService threadPool = Executors.newFixedThreadPool(100);
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(100);
 
     @Override
     public void run() throws IOException {
@@ -30,18 +27,48 @@ public class PSBroker implements Broker {
         while (true) {
             Socket socket = server.accept();
             threadPool.execute(() -> {
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                    String header = br.readLine();
-                    String content = br.readLine();
-                    if (header.startsWith("Publish")) {
-                        logger.info("接收到一条新的Publish请求");
+                try {
+                    InputStream ips = socket.getInputStream();
+                    BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[1024];
+                    int count;
+                    while (true) {
+                        count = ips.read(buffer);
+                        if (count == -1) break;
+                        baos.write(buffer, 0, count);
                     }
-                    if (header.startsWith("Receive")) {
-
+                    BasicMessage resMsg = new BasicMessage(baos.toString());
+                    Message returnMsg;
+                    switch (resMsg.getHeaderValue("Method")) {
+                        case "Publish":
+                            String queueName = resMsg.getHeaderValue("Queue");
+                            returnMsg = handleSend(queueName, resMsg);
+                            break;
+                        case "Receive":
+                            if (resMsg.getHeaderValue("From") == null) {
+                                returnMsg = new BasicMessage("", "Status:invalid");
+                                break;
+                            }
+                            String receiverName = resMsg.getHeaderValue("From");
+                            returnMsg = handleReceive(receiverName);
+                            break;
+                        case "Subscribe":
+                            if (resMsg.getHeaderValue("From") == null) {
+                                returnMsg = new BasicMessage("", "Status:invalid");
+                                break;
+                            }
+                            String subscriberName = resMsg.getHeaderValue("From");
+                            String toQueueName = resMsg.getHeaderValue("Queue");
+                            returnMsg = handleSubscribe(subscriberName, toQueueName);
+                            break;
+                        default:
+                            returnMsg = new BasicMessage("", "Status:invalid");
+                            break;
                     }
-                    if (header.startsWith("Subscribe")) {
-                        logger.info("接收到一条新的Subscribe请求");
-                    }
+                    bw.write(returnMsg.toString());
+                    bw.flush();
+                    bw.close();
                 } catch (IOException e) {
                     logger.info("处理请求时出现异常");
                 }
@@ -51,7 +78,7 @@ public class PSBroker implements Broker {
 
     @Override
     public Message handleSend(String queueName, Message message) {
-        Message msg = new BasicMessage("Status:success\r\n\r\n");
+        Message msg = new BasicMessage("", "Status:success");
         for (PSMQ q : queues) {
             if (q.getName().equals(queueName)) {
                 q.enqueue(message);
@@ -77,8 +104,11 @@ public class PSBroker implements Broker {
             }
             remainings += q.getRemainingCount(subscriberName);
         }
-        // TODO: 将这些信息组合成新的Message后返回
-        return null;
+        StringBuilder sb = new StringBuilder();
+        for (Message msg : ret) {
+            sb.append(msg.getHeader()).append("\r\n").append(msg.getContent()).append("\r\n");
+        }
+        return new BasicMessage(sb.toString(), "Status:success", "Remaining:" + remainings);
     }
 
     public Message handleSubscribe(String subscriberName, String queueName) {
