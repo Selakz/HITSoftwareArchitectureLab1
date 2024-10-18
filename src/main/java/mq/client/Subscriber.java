@@ -26,10 +26,12 @@ public class Subscriber implements Receiver {
 
     public void subscribe(String queueName) {
         Message msg = new BasicMessage("", "Method:Subscribe", "Queue:" + queueName, "From:" + name); // TODO:
-        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), Config.PORT)) {
-            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+        try (Socket socket = new Socket("localhost", Config.PORT);
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+             BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
             bw.write(msg.toString());
-            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            bw.flush();
+            socket.shutdownOutput();
             BasicMessage result = new BasicMessage(br.readLine());
             if (!result.getHeaderValue("Status").equals("success")) {
                 throw new IOException("消息发布失败");
@@ -43,9 +45,11 @@ public class Subscriber implements Receiver {
     public List<Message> receive() {
         Message msg = new BasicMessage("", "Method:Receive", "Queue:--ALL--", "From:" + name);
         List<Message> result = new ArrayList<>();
-        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), Config.PORT)) {
-            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+        try (Socket socket = new Socket("localhost", Config.PORT);
+             BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))) {
             bw.write(msg.toString());
+            bw.flush();
+            socket.shutdownOutput();
             InputStream ips = socket.getInputStream();
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buffer = new byte[1024];
@@ -62,6 +66,7 @@ public class Subscriber implements Receiver {
             String remainingStr = resMsg.getHeaderValue("Remaining");
             remainings = remainingStr == null ? remainings : Integer.parseInt(remainingStr);
             String[] split = resMsg.getContent().split("\r\n");
+            if (split.length == 1 && split[0].isEmpty()) return result;
             if (split.length % 2 != 0) {
                 throw new IOException("消息接收失败");
             }
@@ -70,7 +75,7 @@ public class Subscriber implements Receiver {
                 result.add(newMsg);
             }
         } catch (IOException e) {
-            logger.info(name + "在订阅队列时出现异常");
+            logger.info(name + "在接收消息时出现异常");
         }
         return result;
     }

@@ -35,8 +35,10 @@ public class ApplicationTest {
         List<Message> msgs3 = ssb3.receive();
         // 测试内容：1. Message内容、数量、顺序是否正确 2. 多个订阅者能否得到同一份消息 3. 是否会收到订阅之前的消息
         Assert.assertEquals(3, msgs1.size());
-        Assert.assertEquals("q1", ((BasicMessage) msgs1.get(1)).getHeaderValue("Queue"));
-        Assert.assertEquals("pbs2", ((BasicMessage) msgs1.get(2)).getHeaderValue("From"));
+        Assert.assertEquals("q1", ((BasicMessage) msgs1.get(0)).getHeaderValue("Queue"));
+        Assert.assertEquals("pbs1", ((BasicMessage) msgs1.get(0)).getHeaderValue("From"));
+        Assert.assertEquals("pbs2", ((BasicMessage) msgs1.get(1)).getHeaderValue("From"));
+        Assert.assertEquals("pbs1", ((BasicMessage) msgs1.get(2)).getHeaderValue("From"));
         Assert.assertEquals(1, msgs2.size());
         Assert.assertEquals("q2 from pbs1", msgs2.get(0).getContent());
         Assert.assertEquals(0, msgs3.size());

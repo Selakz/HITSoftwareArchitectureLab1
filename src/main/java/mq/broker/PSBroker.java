@@ -16,13 +16,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class PSBroker implements Broker {
-    private final Set<PSMQ> queues = new HashSet<>();
+    private final List<PSMQ> queues = new ArrayList<>();
 
     private final ExecutorService threadPool = Executors.newFixedThreadPool(100);
 
     @Override
     public void run() throws IOException {
         ServerSocket server = new ServerSocket(Config.PORT);
+        System.out.println(server.getLocalPort());
         logger.info("Broker已在端口" + Config.PORT + "上开始运行");
         while (true) {
             Socket socket = server.accept();
@@ -44,6 +45,7 @@ public class PSBroker implements Broker {
                         case "Publish":
                             String queueName = resMsg.getHeaderValue("Queue");
                             returnMsg = handleSend(queueName, resMsg);
+                            logger.info("接收到" + resMsg.getHeaderValue("From") + "在" + queueName + "上的发布请求");
                             break;
                         case "Receive":
                             if (resMsg.getHeaderValue("From") == null) {
@@ -52,6 +54,7 @@ public class PSBroker implements Broker {
                             }
                             String receiverName = resMsg.getHeaderValue("From");
                             returnMsg = handleReceive(receiverName);
+                            logger.info("接收到" + receiverName + "的接收请求");
                             break;
                         case "Subscribe":
                             if (resMsg.getHeaderValue("From") == null) {
@@ -61,6 +64,8 @@ public class PSBroker implements Broker {
                             String subscriberName = resMsg.getHeaderValue("From");
                             String toQueueName = resMsg.getHeaderValue("Queue");
                             returnMsg = handleSubscribe(subscriberName, toQueueName);
+                            logger.info("接收到" + subscriberName + "在" + toQueueName + "上的订阅请求");
+
                             break;
                         default:
                             returnMsg = new BasicMessage("", "Status:invalid");
