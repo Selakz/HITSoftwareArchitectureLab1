@@ -23,7 +23,6 @@ public class PSBroker implements Broker {
     @Override
     public void run() throws IOException {
         ServerSocket server = new ServerSocket(Config.PORT);
-        System.out.println(server.getLocalPort());
         logger.info("Broker已在端口" + Config.PORT + "上开始运行");
         while (true) {
             Socket socket = server.accept();

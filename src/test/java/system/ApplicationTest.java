@@ -1,6 +1,5 @@
 package system;
 
-import mq.broker.PSBroker;
 import mq.client.Publisher;
 import mq.client.Subscriber;
 import mq.message.BasicMessage;
@@ -8,8 +7,10 @@ import mq.message.Message;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -44,11 +45,65 @@ public class ApplicationTest {
         Assert.assertEquals(0, msgs3.size());
     }
 
-    public double getRpsWhen1sPerRequest_PS(int publisherCount, int messageCountPerPublisher, int subscriberCount) {
-        return 0;
+    // 仅供测试用的用户类
+    private static class PSUser {
+        private final Subscriber subscriber;
+
+        private final ExecutorService threadPool = Executors.newFixedThreadPool(100);
+
+        public PSUser(String name) {
+            subscriber = new Subscriber(name);
+            subscriber.subscribe(name);
+        }
+
+        public void run(int totalCount) {
+            new Thread(() -> {
+                List<Message> msgs = subscriber.receive();
+                do {
+                    for (Message msg : msgs) {
+                        threadPool.execute(() -> {
+                            synchronized (this) {
+                                try {
+                                    wait(1000);
+                                } catch (InterruptedException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+                            finishedCount.addAndGet(1);
+                        });
+                    }
+                    msgs = subscriber.receive();
+                } while (finishedCount.get() != totalCount);
+            }).start();
+        }
+    }
+
+    // 对，对吗
+    public static double getRpsWhen1sPerRequest_PS(int pbsOrSsbCount, int messageCountPerPublisher) {
+        finishedCount.set(0);
+        List<PSUser> users = new ArrayList<>();
+        List<Publisher> publishers = new ArrayList<>();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(100);
+        long startTime = System.currentTimeMillis();
+        for (int i = 0; i < pbsOrSsbCount; i++) {
+            users.add(new PSUser(Integer.toString(i)));
+            Publisher publisher = new Publisher("p" + i);
+            String finalI = Integer.toString(i);
+            threadPool.execute(() -> {
+                for (int j = 0; j < messageCountPerPublisher; j++) {
+                    publisher.send(finalI, "any");
+                }
+            });
+        }
+        for (int i = 0; i < pbsOrSsbCount; i++) {
+            users.get(i).run(pbsOrSsbCount * messageCountPerPublisher);
+        }
+        while (finishedCount.get() != pbsOrSsbCount * messageCountPerPublisher) ;
+        long endTime = System.currentTimeMillis();
+        return pbsOrSsbCount * messageCountPerPublisher * 1000.0 / (endTime - startTime);
     }
 
     public static void main(String[] args) {
-
+        System.out.println(getRpsWhen1sPerRequest_PS(1, 10));
     }
 }
